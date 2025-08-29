@@ -11,20 +11,25 @@ function Navbar({ onCategorySelect = () => {} }) {
   const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const token = getToken();
-        const res = await axios.get("http://localhost:8080/api/products/categories", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setCategories(res.data);
-      } catch (err) {
-        console.error("Error fetching categories:", err);
-      }
-    };
-    fetchCategories();
-  }, []);
+  const fetchCategories = async () => {
+    try {
+      const token = getToken();
+      const username = getUsername();
 
+      // ✅ Only fetch if logged in
+      if (!token || !username) return;
+
+      const res = await axios.get("http://localhost:8080/api/products/categories", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setCategories(res.data);
+    } catch (err) {
+      console.error("Error fetching categories:", err);
+    }
+  };
+
+  fetchCategories();
+}, [username]);
   const handleLogout = () => {
     clearAuth();
     navigate("/login");
