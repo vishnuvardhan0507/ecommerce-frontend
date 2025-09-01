@@ -16,7 +16,6 @@ function Navbar({ onCategorySelect = () => {} }) {
       const token = getToken();
       const username = getUsername();
 
-      // ✅ Only fetch if logged in
       if (!token || !username) return;
 
       const res = await axios.get("http://localhost:8080/api/products/categories", {

@@ -72,9 +72,8 @@ function Products({ category }) {
               textAlign: "center",
               background: "white",
             }}
-          >
-            {/* Product Image (default placeholder if missing) */}
-            <img
+          >   
+          <img 
               src={`/images/${p.name}.png`}
               alt={p.name}
               style={{

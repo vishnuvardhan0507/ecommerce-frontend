@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { getToken, getUsername } from "../utils/auth"; // ✅ same helpers as Products.js
+import { getToken, getUsername } from "../utils/auth";
+import { useNavigate } from "react-router-dom"; // ✅ for navigation
 
 function Cart() {
   const [cartItems, setCartItems] = useState([]);
+  const navigate = useNavigate(); // ✅ navigation hook
 
   useEffect(() => {
     fetchCart();
   }, []);
 
-  // ✅ fetch cart with Authorization header
   const fetchCart = async () => {
     try {
       const token = getToken();
@@ -22,7 +23,6 @@ function Cart() {
         }
       );
 
-      console.log("Cart:", response.data);
       setCartItems(response.data);
     } catch (error) {
       console.error("Error fetching cart:", error);
@@ -30,67 +30,34 @@ function Cart() {
     }
   };
 
-  // ✅ update quantity with token
   const updateCartQuantity = async (cartId, delta) => {
     try {
       const token = getToken();
 
-      const response = await axios.put(
+      await axios.put(
         `http://localhost:8080/api/cart/update/${cartId}?delta=${delta}`,
         {},
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-
-      console.log("Updated cart item:", response.data);
-      fetchCart(); // refresh cart after update
+      fetchCart();
     } catch (error) {
       console.error("Error updating cart quantity:", error);
     }
   };
 
-  // ✅ place order with token
-  const placeOrder = async () => {
-    try {
-      const token = getToken();
-      const username = getUsername();
-      const orderDto = {
-        username: username,
-        productIds: cartItems.map((item) => item.productId || item.id), // adjust key as per your cart
-        totalAmount: calculateTotal(),
-      };
-      const response = await axios.post(
-        `http://localhost:8080/api/order/place`,
-        orderDto,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-
-      alert("Order placed successfully!");
-      setCartItems([]); // Clear cart in UI
-      console.log("Order details:", response.data);
-    } catch (error) {
-      console.error("Error placing order:", error);
-      alert("Failed to place order");
-    }
-  };
-
-  // ✅ remove item with token
   const removeFromCart = async (cartId) => {
     try {
       const token = getToken();
 
-      const response = await axios.delete(
+      await axios.delete(
         `http://localhost:8080/api/cart/remove/${cartId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
-
-      console.log(response.data); // "Item removed from cart"
-      fetchCart(); // refresh cart after removal
+      fetchCart();
     } catch (error) {
       console.error("Error removing from cart:", error);
     }
@@ -101,6 +68,92 @@ function Cart() {
       (total, item) => total + item.price * item.quantity,
       0
     );
+  };
+
+  // ✅ Razorpay payment (single flow → verify → place order → clear cart → redirect)
+  const handlePayment = async () => {
+    try {
+      const token = getToken();
+      const username = getUsername();
+
+      // 1️⃣ Create Razorpay order from backend
+      const res = await axios.post(
+        `http://localhost:8080/api/payment/create-order?appOrderId=${username}-${Date.now()}&amount=${calculateTotal()}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const { razorpayOrderId, amount, currency } = res.data;
+
+      // 2️⃣ Open Razorpay checkout
+      const options = {
+        key: "rzp_test_RC23KgjupY8UVf", // your test key
+        amount: amount * 100,
+        currency: currency,
+        name: "My E-Commerce App",
+        description: "Order Payment",
+        order_id: razorpayOrderId,
+        handler: async function (response) {
+          try {
+            // 3️⃣ Verify payment in backend
+            await axios.post(
+              "http://localhost:8080/api/payment/verify",
+              {
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+                username: username,
+              },
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            // 4️⃣ Place order in backend (move cart → orders)
+            const orderDto = {
+              username: username,
+              productIds: cartItems.map((item) => item.productId || item.id),
+              totalAmount: calculateTotal(),
+            };
+
+            await axios.post("http://localhost:8080/api/order/place", orderDto, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            // 5️⃣ Clear cart in backend
+            await Promise.all(
+              cartItems.map((item) =>
+                axios.delete(`http://localhost:8080/api/cart/remove/${item.id}`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                })
+              )
+            );
+
+            // 6️⃣ Clear frontend cart
+            setCartItems([]);
+
+            // ✅ Redirect to Orders page
+            alert("🎉 Payment successful! Redirecting to Orders...");
+            navigate("/orders");
+          } catch (err) {
+            console.error("Error finalizing order:", err);
+            alert("Payment succeeded, but order placement failed!");
+          }
+        },
+        prefill: {
+          name: username,
+          email: `${username}@example.com`,
+          contact: "9999999999",
+        },
+        theme: {
+          color: "#3399cc",
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      console.error("Error starting payment:", err);
+      alert("Payment initiation failed!");
+    }
   };
 
   return (
@@ -124,7 +177,6 @@ function Cart() {
                 background: "white",
               }}
             >
-              {/* ✅ Product image */}
               <img
                 src={`/images/${item.productName}.png`}
                 alt={item.productName}
@@ -138,14 +190,12 @@ function Cart() {
                 }}
               />
 
-              {/* ✅ Product details */}
               <div style={{ flex: 1 }}>
                 <h3 style={{ margin: "0 0 8px" }}>{item.productName}</h3>
                 <p style={{ margin: "0 0 8px", color: "#555" }}>
                   Price: ₹{item.price}
                 </p>
 
-                {/* Quantity control */}
                 <div
                   style={{ display: "flex", alignItems: "center", gap: "10px" }}
                 >
@@ -185,10 +235,12 @@ function Cart() {
             </div>
           ))}
           <h3 style={{ marginTop: "20px" }}>Total: ₹{calculateTotal()}</h3>
+
+          {/* ✅ Only Razorpay button now */}
           <button
-            onClick={placeOrder}
+            onClick={handlePayment}
             style={{
-              background: "#27ae60",
+              background: "#3498db",
               color: "white",
               border: "none",
               padding: "10px 16px",
@@ -197,7 +249,7 @@ function Cart() {
               marginTop: "10px",
             }}
           >
-            Place Order
+            Pay with Razorpay
           </button>
         </div>
       )}
