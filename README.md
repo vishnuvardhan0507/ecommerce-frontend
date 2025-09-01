@@ -12,3 +12,4 @@
 - Product images in catalog
 - Shopping cart functionality
 - Order placement and history
+- razorpay payment to place order for enhancing user experience
